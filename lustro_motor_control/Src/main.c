@@ -41,7 +41,6 @@
 #include "stm32f1xx_hal.h"
 
 /* USER CODE BEGIN Includes */
-//#include "uart.h"
 #include <string.h>
 #include <stdbool.h>
 /* USER CODE END Includes */
@@ -55,7 +54,7 @@ UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
-TIM_HandleTypeDef tim4;
+volatile char message[200];
 uint8_t value;
 typedef enum {frd, brd} dir;
 
@@ -65,7 +64,8 @@ struct DC_Motor {
 	dir rot_dir;
 };
 
-
+//volatile uint16_t pulse_count; // Licznik impulsow
+//volatile uint16_t positions; // Licznik przekreconych pozycji
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -83,7 +83,7 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
 /* Private function prototypes -----------------------------------------------*/
 void get_rotation(dir rot_dir_get, float speed_get, struct DC_Motor *ptr);
 void set_pwm(struct DC_Motor *ptr);
-void send_string(char* s);
+void uart_send(char* s);
 /* USER CODE END PFP */
 
 /* USER CODE BEGIN 0 */
@@ -98,7 +98,7 @@ void send_string(char* s);
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-	struct DC_Motor *mmeasPtr, motor_ref; //zapisuje ZADANE/REFERENCE dane
+	struct DC_Motor *mmeasPtr, motor_ref; //zapisuje ZMIERZONE dane
 	mmeasPtr = &motor_ref;
 	motor_ref.rot_dir = frd;
 	motor_ref.speed = 4360.0;
@@ -111,6 +111,7 @@ int main(void)
 	motor_meas.duty = motor_meas.speed/5260.0*100.0;// nominal speed 5260 rpm
 
 	SystemCoreClock = 8000000; // taktowanie zegara 8Mhz
+
   /* USER CODE END 1 */
 
   /* MCU Configuration----------------------------------------------------------*/
@@ -137,14 +138,14 @@ int main(void)
   MX_TIM2_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-
+  HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_ALL);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-//	  send_string("hello\n");
+//	  uart_send("wolwowlo\n");
 	  if (__HAL_UART_GET_FLAG(&huart2, UART_FLAG_RXNE) == SET)
 	  		 {
 	  		 HAL_UART_Receive(&huart2, &value, 1, 100);
@@ -152,12 +153,15 @@ int main(void)
 	  		 switch(value){
 	  		 case 'a': // backward
 	  			    get_rotation(brd, 5255.0, &motor_ref);
-	  			    set_pwm(&motor_ref);
+	  			    set_pwm(&motor_ref); // nie dziala
 	  		 		break;
 	  		 case 'd':  //forward
-	  			    get_rotation(frd, 120.0, &motor_ref);
+	  			    get_rotation(frd, 1000.0, &motor_ref);
 	  			    set_pwm(&motor_ref);
 	  		 		break;
+	  		 default:
+	  			 uart_send("default\n");
+	  			 break;
 	  		 	}
 	  		 }
   /* USER CODE END WHILE */
@@ -221,7 +225,6 @@ void SystemClock_Config(void)
 /* TIM2 init function */
 static void MX_TIM2_Init(void)
 {
-
   TIM_ClockConfigTypeDef sClockSourceConfig;
   TIM_MasterConfigTypeDef sMasterConfig;
 
@@ -248,13 +251,11 @@ static void MX_TIM2_Init(void)
   {
     _Error_Handler(__FILE__, __LINE__);
   }
-
 }
 
 /* TIM3 init function */
 static void MX_TIM3_Init(void)
 {
-
   TIM_Encoder_InitTypeDef sConfig;
   TIM_MasterConfigTypeDef sMasterConfig;
 
@@ -290,7 +291,6 @@ static void MX_TIM3_Init(void)
 /* TIM4 init function */
 static void MX_TIM4_Init(void)
 {
-
   TIM_MasterConfigTypeDef sMasterConfig;
   TIM_OC_InitTypeDef sConfigOC;
 
@@ -359,7 +359,6 @@ static void MX_USART2_UART_Init(void)
 */
 static void MX_GPIO_Init(void)
 {
-
   GPIO_InitTypeDef GPIO_InitStruct;
 
   /* GPIO Ports Clock Enable */
@@ -387,12 +386,11 @@ static void MX_GPIO_Init(void)
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
-
 }
 
 /* USER CODE BEGIN 4 */
 
-void get_rotation(dir rot_dir_get, float speed_get, struct DC_Motor *ptr){ // get data from regulator/commands
+void get_rotation(dir rot_dir_get, float speed_get, struct DC_Motor *ptr){ // update reference (wanted) motor data
 	ptr->rot_dir = rot_dir_get;
 	ptr->speed = speed_get;
 	ptr->duty = speed_get/5260.0*100.0; // nominal speed 5260 rpm
@@ -402,21 +400,24 @@ void set_pwm(struct DC_Motor *ptr){
     if (ptr->rot_dir == frd){
 	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET);
  	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
- 	HAL_TIM_PWM_Stop(&tim4, TIM_CHANNEL_2);
- 	HAL_TIM_PWM_Start(&tim4, TIM_CHANNEL_1);
-    __HAL_TIM_SET_COMPARE(&tim4, TIM_CHANNEL_1, ptr->duty); //wywalic te ify
+ 	HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_2);
+ 	HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
+    __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, ptr->duty);
     } else if (ptr->rot_dir == brd){
 	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
 	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET);
-    HAL_TIM_PWM_Stop(&tim4, TIM_CHANNEL_1); // to be optimised
-    HAL_TIM_PWM_Start(&tim4, TIM_CHANNEL_2);
-	__HAL_TIM_SET_COMPARE(&tim4, TIM_CHANNEL_2, ptr->duty);
+    HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_1);
+    HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_2);
+	__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, ptr->duty);
 	}
-    printf("motor is rotating %d with speed %.2f rpm, duty = %.2f\r\n", // co z wyswietlaniem enuma?
-    		(int)ptr->rot_dir,  ptr->speed, ptr->duty);
+
+    sprintf(message, "motor is rotating %d with speed %.2f rpm, duty = %.2f\r\n",
+    		    		(int)ptr->rot_dir,  ptr->speed, ptr->duty);
+    uart_send(message);
+//    HAL_Delay(200);
 }
 
-void send_string(char* s)
+void uart_send(char* s)
 {
  HAL_UART_Transmit(&huart2, (uint8_t*)s, strlen(s), 1000);
 }

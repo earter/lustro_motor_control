@@ -36,7 +36,8 @@
 #include "stm32f1xx_it.h"
 
 /* USER CODE BEGIN 0 */
-
+//extern uint16_t pulse_count;
+//extern char message;
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
@@ -57,7 +58,9 @@ void SysTick_Handler(void)
   HAL_IncTick();
   HAL_SYSTICK_IRQHandler();
   /* USER CODE BEGIN SysTick_IRQn 1 */
-
+//  pulse_count = TIM3->CNT;
+//  sprintf(message, "pulse count = %d\r\n",TIM3->CNT);
+//  uart_send(message);
   /* USER CODE END SysTick_IRQn 1 */
 }
 
