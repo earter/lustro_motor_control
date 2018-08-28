@@ -36,8 +36,15 @@
 #include "stm32f1xx_it.h"
 
 /* USER CODE BEGIN 0 */
-//extern uint16_t pulse_count;
-//extern char message;
+extern uint16_t pulse_count;
+extern uint16_t pulse_count_prev;
+extern uint16_t delta_pulse;
+extern float velocity_meas;
+extern char message;
+extern float rpm_const;
+extern uint8_t index_cnt;
+extern struct DC_Motor motor_meas;
+extern int8_t msr;
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
@@ -53,14 +60,24 @@ extern TIM_HandleTypeDef htim2;
 void SysTick_Handler(void)
 {
   /* USER CODE BEGIN SysTick_IRQn 0 */
-//  printf("timer3 cnt = %d, TIM3->CNT");
+//	pulse_count = TIM3->CNT;
+//	delta_pulse = pulse_count - pulse_count_prev;
+//	pulse_count_prev = pulse_count;
+//	msr=1;
+//	HAL_IncTick();
+//	HAL_SYSTICK_Callback(&motor_meas);
+	//	if (pulse_count > pulse_count_prev){
+	//		motor_meas.rot_dir = frd;
+	//	} else {
+	//		motor_meas.rot_dir = brd;
+	//	}
+
+
   /* USER CODE END SysTick_IRQn 0 */
   HAL_IncTick();
   HAL_SYSTICK_IRQHandler();
   /* USER CODE BEGIN SysTick_IRQn 1 */
-//  pulse_count = TIM3->CNT;
-//  sprintf(message, "pulse count = %d\r\n",TIM3->CNT);
-//  uart_send(message);
+
   /* USER CODE END SysTick_IRQn 1 */
 }
 
@@ -72,6 +89,21 @@ void SysTick_Handler(void)
 /******************************************************************************/
 
 /**
+* @brief This function handles EXTI line[9:5] interrupts.
+*/
+void EXTI9_5_IRQHandler(void)
+{
+  /* USER CODE BEGIN EXTI9_5_IRQn 0 */
+//	index_cnt++;
+
+  /* USER CODE END EXTI9_5_IRQn 0 */
+  HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_8);
+  /* USER CODE BEGIN EXTI9_5_IRQn 1 */
+
+  /* USER CODE END EXTI9_5_IRQn 1 */
+}
+
+/**
 * @brief This function handles TIM2 global interrupt.
 */
 void TIM2_IRQHandler(void)
@@ -81,7 +113,10 @@ void TIM2_IRQHandler(void)
   /* USER CODE END TIM2_IRQn 0 */
   HAL_TIM_IRQHandler(&htim2);
   /* USER CODE BEGIN TIM2_IRQn 1 */
-
+//	pulse_count = TIM3->CNT;
+//	delta_pulse = pulse_count - pulse_count_prev;
+//	pulse_count_prev = pulse_count;
+//	msr=1;
   /* USER CODE END TIM2_IRQn 1 */
 }
 
