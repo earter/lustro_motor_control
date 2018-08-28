@@ -450,7 +450,7 @@ void uart_send(char* s){
 	HAL_UART_Transmit(&huart2, (uint8_t*)s, strlen(s), 1000);
 }
 
-//HAL_SYSTICK_Callback(void)
+
 void measure_motor(uint16_t pulse_count, uint16_t pulse_count_prev, uint16_t delta_pulse){
 	if ((pulse_count > pulse_count_prev) && delta_pulse < 800){
 		//		get_rotation(frd, 5255.0, &motor_meas);

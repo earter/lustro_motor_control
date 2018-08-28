@@ -72,12 +72,6 @@ void SysTick_Handler(void)
 	//		motor_meas.rot_dir = brd;
 	//	}
 
-	//	  velocity_meas = (pulse_count+(half_rotations-1)*512 - pulse_count_prev)/rpm_const; // half-rot ticks at the end of a full half circle so we skip first one
-	//	  half_rotations = 0;
-	//	  pulse_count_prev = pulse_count;
-	//	  sprintf(message, "pulse count = %d, speed = %.2f\r\n",TIM3->CNT, velocity_meas); //zawiesza program
-	//	  sprintf(message, "pleple\r\n"); //to tez
-	//	  uart_send("ssg\r\n"); // wypisuje - OK
 
   /* USER CODE END SysTick_IRQn 0 */
   HAL_IncTick();
