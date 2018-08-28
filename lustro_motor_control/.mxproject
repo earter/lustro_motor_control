@@ -1,7 +1,7 @@
 [PreviousGenFiles]
-HeaderPath=C:/Users/jw/Documents/lustro_motor_control/Inc
+HeaderPath=C:/Users/jw/git/lustro_motor_control/lustro_motor_control/Inc
 HeaderFiles=stm32f1xx_it.h;stm32f1xx_hal_conf.h;main.h;
-SourcePath=C:/Users/jw/Documents/lustro_motor_control/Src
+SourcePath=C:/Users/jw/git/lustro_motor_control/lustro_motor_control/Src
 SourceFiles=stm32f1xx_it.c;stm32f1xx_hal_msp.c;main.c;
 
 [PreviousLibFiles]

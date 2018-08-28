@@ -54,6 +54,9 @@ UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
+// TODO
+// dodac max predkosc/wypelnienie, zabezpieczenie
+
 volatile char message[200];
 uint8_t value;
 typedef enum {frd, brd} dir;
@@ -64,8 +67,13 @@ struct DC_Motor {
 	dir rot_dir;
 };
 
-//volatile uint16_t pulse_count; // Licznik impulsow
-//volatile uint16_t positions; // Licznik przekreconych pozycji
+volatile uint16_t pulse_count = 0; // Licznik impulsow
+volatile uint16_t pulse_count_prev = 0;
+volatile uint8_t index_cnt = 0;
+float velocity_meas = 0;
+const float rpm_const = 17.066667;
+int8_t msr =0;
+int16_t delta_pulse;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -84,6 +92,8 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
 void get_rotation(dir rot_dir_get, float speed_get, struct DC_Motor *ptr);
 void set_pwm(struct DC_Motor *ptr);
 void uart_send(char* s);
+void measure_motor(uint16_t pulse_count, uint16_t pulse_count_prev, uint16_t delta_pulse);
+//void HAL_SYSTICK_Callback(struct DC_Motor *ptr);
 /* USER CODE END PFP */
 
 /* USER CODE BEGIN 0 */
@@ -98,19 +108,18 @@ void uart_send(char* s);
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-	struct DC_Motor *mmeasPtr, motor_ref; //zapisuje ZMIERZONE dane
-	mmeasPtr = &motor_ref;
-	motor_ref.rot_dir = frd;
-	motor_ref.speed = 4360.0;
-	motor_ref.duty = motor_ref.speed/5260.0*100.0;// nominal speed 5260 rpm
-
-	struct DC_Motor *mrefPtr, motor_meas; //zapisuje ZADANE/REFERENCE dane
-	mrefPtr = &motor_meas;
+	struct DC_Motor *mmeasPtr, motor_meas; //zapisuje ZMIERZONE dane
+	mmeasPtr = &motor_meas;
 	motor_meas.rot_dir = frd;
 	motor_meas.speed = 4360.0;
 	motor_meas.duty = motor_meas.speed/5260.0*100.0;// nominal speed 5260 rpm
 
-	SystemCoreClock = 8000000; // taktowanie zegara 8Mhz
+	struct DC_Motor *mrefPtr, motor_ref; //zapisuje ZADANE/REFERENCE dane
+	mrefPtr = &motor_ref;
+	motor_ref.rot_dir = frd;
+	motor_ref.speed = 4360.0;
+	motor_ref.duty = motor_ref.speed/5260.0*100.0;// nominal speed 5260 rpm
+	//	SystemCoreClock = 8000000; // taktowanie zegara 8Mhz
 
   /* USER CODE END 1 */
 
@@ -138,37 +147,43 @@ int main(void)
   MX_TIM2_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-  HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_ALL);
+	HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_ALL);
+	HAL_TIM_Base_Start_IT(&htim2);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  while (1)
-  {
-//	  uart_send("wolwowlo\n");
-	  if (__HAL_UART_GET_FLAG(&huart2, UART_FLAG_RXNE) == SET)
-	  		 {
-	  		 HAL_UART_Receive(&huart2, &value, 1, 100);
-	  		 printf("Odebrano: %c\r\n", value);
-	  		 switch(value){
-	  		 case 'a': // backward
-	  			    get_rotation(brd, 5255.0, &motor_ref);
-	  			    set_pwm(&motor_ref); // nie dziala
-	  		 		break;
-	  		 case 'd':  //forward
-	  			    get_rotation(frd, 1000.0, &motor_ref);
-	  			    set_pwm(&motor_ref);
-	  		 		break;
-	  		 default:
-	  			 uart_send("default\n");
-	  			 break;
-	  		 	}
-	  		 }
+	while (1)
+	{
+
+		if (__HAL_UART_GET_FLAG(&huart2, UART_FLAG_RXNE) == SET)
+		{
+			HAL_UART_Receive(&huart2, &value, 1, 100);
+			printf("Odebrano: %c\r\n", value);
+			switch(value){
+			case 'a': // backward
+				get_rotation(brd, 5255.0, &motor_ref);
+				set_pwm(&motor_ref); // nie dziala
+				break;
+			case 'd':  //forward
+				get_rotation(frd, 1920.0, &motor_ref); //test, bo to niby dobra predkosc
+				set_pwm(&motor_ref);
+				break;
+			default:
+				uart_send("default\n");
+				break;
+			}
+		}
+		if (msr==1){
+			msr=0;
+			measure_motor(pulse_count, pulse_count_prev, delta_pulse);
+
+		}
   /* USER CODE END WHILE */
 
   /* USER CODE BEGIN 3 */
 
-  }
+	}
   /* USER CODE END 3 */
 
 }
@@ -225,13 +240,14 @@ void SystemClock_Config(void)
 /* TIM2 init function */
 static void MX_TIM2_Init(void)
 {
+
   TIM_ClockConfigTypeDef sClockSourceConfig;
   TIM_MasterConfigTypeDef sMasterConfig;
 
   htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 10800-1;
+  htim2.Init.Prescaler = 64000-1;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 1000-1;
+  htim2.Init.Period = 100-1;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
@@ -251,18 +267,20 @@ static void MX_TIM2_Init(void)
   {
     _Error_Handler(__FILE__, __LINE__);
   }
+
 }
 
 /* TIM3 init function */
 static void MX_TIM3_Init(void)
 {
+
   TIM_Encoder_InitTypeDef sConfig;
   TIM_MasterConfigTypeDef sMasterConfig;
 
   htim3.Instance = TIM3;
   htim3.Init.Prescaler = 0;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 0xFFFF;
+  htim3.Init.Period = 1024;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   sConfig.EncoderMode = TIM_ENCODERMODE_TI12;
@@ -291,13 +309,14 @@ static void MX_TIM3_Init(void)
 /* TIM4 init function */
 static void MX_TIM4_Init(void)
 {
+
   TIM_MasterConfigTypeDef sMasterConfig;
   TIM_OC_InitTypeDef sConfigOC;
 
   htim4.Instance = TIM4;
   htim4.Init.Prescaler = 400-1;
   htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim4.Init.Period = 100-1;
+  htim4.Init.Period = 10-1;
   htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
   if (HAL_TIM_PWM_Init(&htim4) != HAL_OK)
@@ -335,14 +354,13 @@ static void MX_USART2_UART_Init(void)
 {
 
   huart2.Instance = USART2;
-  huart2.Init.BaudRate = 115200;
+  huart2.Init.BaudRate = 9600;
   huart2.Init.WordLength = UART_WORDLENGTH_8B;
   huart2.Init.StopBits = UART_STOPBITS_1;
   huart2.Init.Parity = UART_PARITY_NONE;
   huart2.Init.Mode = UART_MODE_TX_RX;
   huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
   huart2.Init.OverSampling = UART_OVERSAMPLING_16;
-
   if (HAL_UART_Init(&huart2) != HAL_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
@@ -359,6 +377,7 @@ static void MX_USART2_UART_Init(void)
 */
 static void MX_GPIO_Init(void)
 {
+
   GPIO_InitTypeDef GPIO_InitStruct;
 
   /* GPIO Ports Clock Enable */
@@ -383,9 +402,19 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : encoder_index_Pin */
+  GPIO_InitStruct.Pin = encoder_index_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(encoder_index_GPIO_Port, &GPIO_InitStruct);
+
   /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
+
   HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
+
 }
 
 /* USER CODE BEGIN 4 */
@@ -397,29 +426,53 @@ void get_rotation(dir rot_dir_get, float speed_get, struct DC_Motor *ptr){ // up
 }
 
 void set_pwm(struct DC_Motor *ptr){
-    if (ptr->rot_dir == frd){
-	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET);
- 	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
- 	HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_2);
- 	HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
-    __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, ptr->duty);
-    } else if (ptr->rot_dir == brd){
-	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
-	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET);
-    HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_1);
-    HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_2);
-	__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, ptr->duty);
+	if (ptr->rot_dir == frd){
+		HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
+		HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_2);
+		HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
+		__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, ptr->duty);
+	} else if (ptr->rot_dir == brd){
+		HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET);
+		HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_1);
+		HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_2);
+		__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, ptr->duty);
 	}
 
-    sprintf(message, "motor is rotating %d with speed %.2f rpm, duty = %.2f\r\n",
-    		    		(int)ptr->rot_dir,  ptr->speed, ptr->duty);
-    uart_send(message);
-//    HAL_Delay(200);
+	sprintf(message, "motor is rotating %d with speed %.2f rpm, duty = %.2f\r\n",
+			(int)ptr->rot_dir,  ptr->speed, ptr->duty);
+	uart_send(message);
+	//    HAL_Delay(200);
 }
 
-void uart_send(char* s)
-{
- HAL_UART_Transmit(&huart2, (uint8_t*)s, strlen(s), 1000);
+void uart_send(char* s){
+	HAL_UART_Transmit(&huart2, (uint8_t*)s, strlen(s), 1000);
+}
+
+//HAL_SYSTICK_Callback(void)
+void measure_motor(uint16_t pulse_count, uint16_t pulse_count_prev, uint16_t delta_pulse){
+	if ((pulse_count > pulse_count_prev) && delta_pulse < 800){
+		//		get_rotation(frd, 5255.0, &motor_meas);
+		sprintf(message, "motor is rotating frd with speed %d rpm\r\n", delta_pulse);
+		uart_send(message);
+		uart_send("forward\r\n");
+	} else if ((pulse_count < pulse_count_prev) && delta_pulse > -800){
+		//		get_rotation(brd, 5255.0, &mmeasPtr);
+		uart_send("backward\r\n");
+	}
+	pulse_count_prev = pulse_count;
+}
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
+	if (htim->Instance == TIM2){
+		pulse_count = TIM3->CNT;
+//		TIM3->CNT=0;
+		delta_pulse = pulse_count - pulse_count_prev;
+		pulse_count_prev = pulse_count;
+		msr=1;
+
+	}
 }
 
 /* USER CODE END 4 */
@@ -433,10 +486,10 @@ void uart_send(char* s)
 void _Error_Handler(char *file, int line)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
-  while(1)
-  {
-  }
+	/* User can add his own implementation to report the HAL error return state */
+	while(1)
+	{
+	}
   /* USER CODE END Error_Handler_Debug */
 }
 
@@ -451,7 +504,7 @@ void _Error_Handler(char *file, int line)
 void assert_failed(uint8_t* file, uint32_t line)
 { 
   /* USER CODE BEGIN 6 */
-  /* User can add his own implementation to report the file name and line number,
+	/* User can add his own implementation to report the file name and line number,
      tex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
   /* USER CODE END 6 */
 }
